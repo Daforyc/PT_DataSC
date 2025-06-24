@@ -7,10 +7,23 @@ import openai
 import os
 import io
 import base64
+from transformers import pipeline
 
 # CONFIGURACIÓN
-openai.api_key = os.getenv("sk-proj-uJ____")
+# Activar si NO estás usando OpenAI
+USE_TRANSFORMERS = True  # Cambia a False si prefieres OpenAI
 
+# Cargar modelo gratuito
+if USE_TRANSFORMERS:
+    @st.cache_resource
+    def cargar_chatbot_local():
+        return pipeline("text2text-generation", model="google/flan-t5-base")
+
+    chatbot = cargar_chatbot_local()
+else:
+    import openai
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    
 # ----------------------- FUNCIONES ------------------------
 @st.cache_data
 def cargar_datos():
@@ -53,25 +66,50 @@ def graficar_y_describir(titulo, forecast, ult_ano):
     tendencia = "aumentó" if variacion > 0 else "disminuyó" if variacion < 0 else "se mantuvo estable"
     st.markdown(f"**\u2705 Entre {forecast['Year'].min()} y {forecast['Year'].max()}, el consumo {tendencia} de {inicio:.0f} a {fin:.0f} ({porcentaje:.1f}%).**")
 
+#def responder_chat(mensaje, df):
+ #   resumen_df = df.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
+  #  prompt = f"""
+#Eres un analista de datos sobre consumo de café. Aquí hay un ejemplo de datos proyectados:
+
+#{resumen_df}
+
+#El usuario pregunta: {mensaje}
+
+#Responde con base en los datos, en español.
+#"""
+ #   respuesta = openai.ChatCompletion.create(
+  #      model="gpt-3.5-turbo",
+   #     messages=[
+    #        {"role": "system", "content": "Eres un asistente que analiza datos proyectados de consumo de café por país, tipo de café y año."},
+     #       {"role": "user", "content": prompt}
+      #  ]
+    #)
+    #return respuesta.choices[0].message.content.strip()
+
 def responder_chat(mensaje, df):
-    resumen_df = df.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
+    resumen_df = df.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10)
+    ejemplo = resumen_df.to_string(index=False)
+
     prompt = f"""
-Eres un analista de datos sobre consumo de café. Aquí hay un ejemplo de datos proyectados:
+Actúa como un analista de datos de consumo de café. Aquí tienes algunas predicciones de consumo:
 
-{resumen_df}
+{ejemplo}
 
-El usuario pregunta: {mensaje}
-
-Responde con base en los datos, en español.
+Con base en eso, responde esta pregunta en español: {mensaje}
 """
-    respuesta = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un asistente que analiza datos proyectados de consumo de café por país, tipo de café y año."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return respuesta.choices[0].message.content.strip()
+
+    if USE_TRANSFORMERS:
+        salida = chatbot(prompt, max_length=512, do_sample=False)[0]["generated_text"]
+        return salida.strip()
+    else:
+        respuesta = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Eres un analista que responde preguntas sobre consumo de café."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return respuesta.choices[0].message.content.strip()
 
 # ----------------------- APP STREAMLIT ------------------------
 st.set_page_config(layout="wide")
@@ -185,11 +223,21 @@ if st.button("🔮 Predecir consumo"):
         st.markdown(href, unsafe_allow_html=True)
         
 # ---------- CHATBOT ANALÍTICO ----------
-st.header("\ud83d\udcac Haz preguntas al asistente")
-df_chat = top_forecast_df.copy()
-mensaje = st.chat_input("Pregúntame sobre las proyecciones de consumo de café...")
+
+st.subheader("💬 Hazle preguntas al asistente")
+mensaje = st.chat_input("Pregúntame sobre los datos proyectados...")
+
 if mensaje:
     with st.spinner("Analizando proyecciones..."):
-        respuesta = responder_chat(mensaje, df_chat)
+        respuesta = responder_chat(mensaje, df_pred)
     st.chat_message("user").write(mensaje)
     st.chat_message("assistant").write(respuesta)
+    
+#st.header("\ud83d\udcac Haz preguntas al asistente")
+#df_chat = top_forecast_df.copy()
+#mensaje = st.chat_input("Pregúntame sobre las proyecciones de consumo de café...")
+#if mensaje:
+#    with st.spinner("Analizando proyecciones..."):
+#        respuesta = responder_chat(mensaje, df_chat)
+#    st.chat_message("user").write(mensaje)
+#    st.chat_message("assistant").write(respuesta)
