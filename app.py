@@ -29,9 +29,10 @@ else:
 def responder_chat(mensaje, df_pred, df_real):
     # Resumen de predicciones (si existe)
     if 'yhat' in df_pred.columns:
-        resumen_pred = df_pred.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
-    else:
-        resumen_pred = "Sin datos proyectados disponibles."
+        if all(col in df_pred.columns for col in ['Country', 'Coffee type', 'Year', 'yhat']):
+            resumen_pred = df_pred.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
+        else:
+            resumen_pred = "No hay columnas suficientes para mostrar predicción."
 
     # Resumen de datos reales
     resumen_real = df_real.groupby(['Country', 'Coffee type', 'Year'])['Consumption'].sum().reset_index().head(10).to_string(index=False)
@@ -113,6 +114,8 @@ df_long = cargar_datos()
 st.header("🌎 Consumo Global Total Anual")
 consumo_global = df_long.groupby('Year')['Consumption'].sum().reset_index()
 model_global, forecast_global = entrenar_modelo(consumo_global, 'Year', 'Consumption', horizonte=2035 - consumo_global['Year'].max())
+forecast_global["Country"] = "Global"
+forecast_global["Coffee type"] = "Total"
 
 fig1 = plt.figure(figsize=(10,4))
 plt.plot(forecast_global['Year'], forecast_global['yhat'], label='Predicción')
