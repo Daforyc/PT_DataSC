@@ -8,6 +8,7 @@ import os
 import io
 import base64
 from transformers import pipeline
+from openpyxl.workbook import Workbook
 
 # CONFIGURACIÓN
 # Activar si NO estás usando OpenAI
