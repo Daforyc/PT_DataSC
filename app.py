@@ -117,6 +117,73 @@ ax.legend()
 st.pyplot(fig)
 st.markdown("**\u2705 Se proyecta que estos países mantendrán el liderazgo en consumo hasta 2035, con variaciones de crecimiento por país.**")
 
+# ---------- Sección: Modelo por país y tipo (interactivo) -----------
+
+st.header("🔮 Predicción por país y tipo de café (2021–2030)")
+
+# Asegurar limpieza
+df_long['Country'] = df_long['Country'].str.strip()
+df_long['Coffee type'] = df_long['Coffee type'].str.strip()
+df_long = df_long.dropna(subset=['Consumption'])
+
+# Desplegable dinámico
+paises = sorted(df_long['Country'].unique())
+pais = st.selectbox("🌍 Selecciona país", paises)
+
+tipos_disponibles = sorted(df_long[df_long['Country'] == pais]['Coffee type'].unique())
+tipo = st.selectbox("☕ Selecciona tipo de café", tipos_disponibles)
+
+# Botón de acción
+if st.button("🔮 Predecir consumo"):
+    df_filtered = df_long[
+        (df_long['Country'] == pais) &
+        (df_long['Coffee type'] == tipo)
+    ]
+
+    if df_filtered.shape[0] < 2:
+        st.warning(f"❌ No hay suficientes datos para {pais} - {tipo}")
+    else:
+        df_model = df_filtered.rename(columns={'Consumption': 'y'})
+        df_model['ds'] = pd.to_datetime(df_model['Year'], format='%Y')
+        df_model = df_model[['ds', 'y']]
+
+        model = Prophet()
+        model.fit(df_model)
+
+        ult_ano = df_model['ds'].dt.year.max()
+        future = model.make_future_dataframe(periods=2030 - ult_ano, freq='Y')
+        forecast = model.predict(future)
+
+        # Mostrar gráfico
+        fig = model.plot(forecast)
+        plt.title(f"Predicción de consumo en {pais} - {tipo} hasta 2030")
+        plt.grid(True)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        # Mostrar tabla
+        forecast['Year'] = forecast['ds'].dt.year
+        tabla = forecast[['Year', 'yhat', 'yhat_lower', 'yhat_upper']]
+        tabla = tabla[tabla['Year'] > ult_ano].round(2)
+
+        tabla_mostrada = tabla.rename(columns={
+            'Year': 'Año',
+            'yhat': 'Predicción',
+            'yhat_lower': 'Límite inferior',
+            'yhat_upper': 'Límite superior'
+        })
+
+        st.subheader("📊 Tabla de predicción (2021–2030)")
+        st.dataframe(tabla_mostrada.set_index('Año'))
+
+        # Botón de descarga
+        towrite = io.BytesIO()
+        tabla_mostrada.to_excel(towrite, index=False, sheet_name='Predicción')
+        towrite.seek(0)
+        b64 = base64.b64encode(towrite.read()).decode()
+        href = f'<a href="data:application/octet-stream;base64,{b64}" download="prediccion_cafe.xlsx">📥 Descargar predicción en Excel</a>'
+        st.markdown(href, unsafe_allow_html=True)
+        
 # ---------- CHATBOT ANALÍTICO ----------
 st.header("\ud83d\udcac Haz preguntas al asistente")
 df_chat = top_forecast_df.copy()
