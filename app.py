@@ -9,7 +9,7 @@ import io
 import base64
 
 # CONFIGURACIÓN
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("sk-proj-uJ7z6Q54sPl1lS3FZjADT3BlbkFJAeEirwzGd6pJ5aAVhDB7")
 
 # ----------------------- FUNCIONES ------------------------
 @st.cache_data
