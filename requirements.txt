@@ -6,4 +6,4 @@ seaborn
 openai
 transformers
 torch
-openpyxl
+openpyxl>=3.1.2
