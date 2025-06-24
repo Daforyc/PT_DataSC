@@ -18,52 +18,78 @@ if USE_TRANSFORMERS:
 
     @st.cache_resource
     def cargar_chatbot_local():
-        return pipeline("text2text-generation", model="google/flan-t5-base")
+        return pipeline("text2text-generation", model="google/flan-t5-large")
 
     chatbot = cargar_chatbot_local()
 else:
     import openai
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Función combinada: responder con predicciones y datos reales
 def responder_chat(mensaje, df_pred, df_real):
-    # Resumen de predicciones (si existe)
-    if 'yhat' in df_pred.columns:
-        if all(col in df_pred.columns for col in ['Country', 'Coffee type', 'Year', 'yhat']):
-            resumen_pred = df_pred.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
-        else:
-            resumen_pred = "No hay columnas suficientes para mostrar predicción."
+    mensaje = mensaje.lower()
 
-    # Resumen de datos reales
+    # --------- Análisis por reglas simples ---------
+    respuesta_directa = None
+
+    # ¿Año con mayor consumo proyectado?
+    if "año con mayor consumo" in mensaje or "mayor consumo" in mensaje:
+        anio = df_pred.loc[df_pred['yhat'].idxmax(), 'Year']
+        valor = int(df_pred['yhat'].max())
+        respuesta_directa = f"📈 El año con mayor consumo proyectado es **{anio}**, con un total de aproximadamente **{valor:,} tazas** de café."
+
+    # ¿País con menor consumo?
+    elif "país que menos" in mensaje:
+        pais = df_real.groupby('Country')['Consumption'].sum().idxmin()
+        val = int(df_real.groupby('Country')['Consumption'].sum().min())
+        respuesta_directa = f"📉 El país que menos café consumió en total es **{pais}**, con aproximadamente **{val:,} tazas**."
+
+    # ¿Consumo total en un año específico?
+    elif "consumo total" in mensaje and any(str(a) in mensaje for a in df_real['Year'].unique()):
+        for year in df_real['Year'].unique():
+            if str(year) in mensaje:
+                total = int(df_real[df_real['Year'] == year]['Consumption'].sum())
+                respuesta_directa = f"📊 En el año **{year}**, se consumieron aproximadamente **{total:,} tazas** de café en total."
+                break
+
+    # ¿Tipos de café en un país?
+    elif "tipo de café" in mensaje and "en" in mensaje:
+        for pais in df_real['Country'].unique():
+            if pais.lower() in mensaje:
+                tipos = df_real[df_real['Country'].str.lower() == pais.lower()]['Coffee type'].unique()
+                tipos_str = ', '.join(sorted(tipos))
+                respuesta_directa = f"☕ En **{pais}** se consumen los siguientes tipos de café: {tipos_str}."
+                break
+
+    # --------- Si hubo una respuesta directa, formatearla ---------
+    if respuesta_directa:
+        prompt = f"""
+Convierte esta información técnica en una respuesta clara y profesional en español:
+
+{respuesta_directa}
+"""
+        salida = chatbot(prompt, max_length=256, do_sample=False)[0]["generated_text"]
+        return salida.strip()
+
+    # --------- Si no hay respuesta directa, usa datos para redactar con contexto ---------
     resumen_real = df_real.groupby(['Country', 'Coffee type', 'Year'])['Consumption'].sum().reset_index().head(10).to_string(index=False)
+    resumen_pred = df_pred.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
 
-    # Prompt unificado
     prompt = f"""
-Actúa como un analista experto en consumo de café. Tienes dos fuentes de datos:
+Actúa como un analista de datos de café. Usa los siguientes datos para responder la pregunta final:
 
-1️⃣ **Histórico de consumo real** (en número de tazas):
+📊 Datos históricos:
 {resumen_real}
 
-2️⃣ **Proyecciones de consumo futuro**:
+📈 Proyecciones:
 {resumen_pred}
 
-Con base en eso, responde en español, de forma clara, la siguiente pregunta del usuario:
+Pregunta del usuario:
 \"\"\"{mensaje}\"\"\"
 """
 
-    if USE_TRANSFORMERS:
-        salida = chatbot(prompt, max_length=512, do_sample=False)[0]["generated_text"]
-        return salida.strip()
-    else:
-        respuesta = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Eres un analista de datos de café."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return respuesta.choices[0].message.content.strip()
-
+    salida = chatbot(prompt, max_length=512, do_sample=False)[0]["generated_text"]
+    return salida.strip()
+    
 # Carga de datos reales
 @st.cache_data
 def cargar_datos():
