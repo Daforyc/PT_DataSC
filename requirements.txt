@@ -2,8 +2,6 @@ streamlit
 prophet
 pandas
 matplotlib
-seaborn
 openai
 transformers
 torch
-openpyxl>=3.1.2
