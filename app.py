@@ -241,6 +241,10 @@ for i, pregunta in enumerate(sugerencias):
 
 mensaje = st.chat_input("Haz una pregunta sobre los datos o predicciones...")
 
+# Usar sugerencia si fue seleccionada
+if "chat_sugerencia" in st.session_state:
+    mensaje = st.session_state.pop("chat_sugerencia")
+
 if mensaje:
     with st.spinner("Analizando..."):
         respuesta = responder_chat(mensaje, df_pred=forecast_global, df_real=df_long)
