@@ -7,7 +7,7 @@ import os
 import io
 import base64
 from transformers import pipeline
-import openpyxl
+#import openpyxl
 
 # CONFIGURACIÓN
 USE_TRANSFORMERS = True  # Cambia a False si prefieres OpenAI
