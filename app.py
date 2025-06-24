@@ -191,12 +191,11 @@ if st.button("🔮 Predecir consumo"):
         st.subheader("📊 Tabla de predicción (2021–2030)")
         st.dataframe(tabla_mostrada.set_index('Año'))
 
-        # Descargar como Excel
-        towrite = io.BytesIO()
-        tabla_mostrada.to_excel(towrite, index=False, sheet_name='Predicción', engine='openpyxl')
-        towrite.seek(0)
-        b64 = base64.b64encode(towrite.read()).decode()
-        href = f'<a href="data:application/octet-stream;base64,{b64}" download="prediccion_cafe.xlsx">📥 Descargar predicción en Excel</a>'
+        # Descargar como Excel/ CSV
+        towrite = io.StringIO()
+        tabla_mostrada.to_csv(towrite, index=False)
+        b64 = base64.b64encode(towrite.getvalue().encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="prediccion_cafe.csv">📥 Descargar predicción en CSV</a>'
         st.markdown(href, unsafe_allow_html=True)
 
 # CHATBOT
