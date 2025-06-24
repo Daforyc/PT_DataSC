@@ -10,28 +10,46 @@ from transformers import pipeline
 #import openpyxl
 
 # CONFIGURACIÓN
-USE_TRANSFORMERS = True  # Cambia a False si prefieres OpenAI
+USE_TRANSFORMERS = True  # Cambia a False si se utilizara OpenAI
 
-# Chatbot
+# Chatbot (con Transformers)
 if USE_TRANSFORMERS:
+    from transformers import pipeline
+
     @st.cache_resource
     def cargar_chatbot_local():
         return pipeline("text2text-generation", model="google/flan-t5-base")
+
     chatbot = cargar_chatbot_local()
 else:
     import openai
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def responder_chat(mensaje, df):
-    resumen_df = df.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10)
-    ejemplo = resumen_df.to_string(index=False)
+# Función combinada: responder con predicciones y datos reales
+def responder_chat(mensaje, df_pred, df_real):
+    # Resumen de predicciones (si existe)
+    if 'yhat' in df_pred.columns:
+        resumen_pred = df_pred.groupby(['Country', 'Coffee type', 'Year'])['yhat'].sum().reset_index().head(10).to_string(index=False)
+    else:
+        resumen_pred = "Sin datos proyectados disponibles."
+
+    # Resumen de datos reales
+    resumen_real = df_real.groupby(['Country', 'Coffee type', 'Year'])['Consumption'].sum().reset_index().head(10).to_string(index=False)
+
+    # Prompt unificado
     prompt = f"""
-Actúa como un analista de datos de consumo de café. Aquí tienes algunas predicciones de consumo (en tazas):
+Actúa como un analista experto en consumo de café. Tienes dos fuentes de datos:
 
-{ejemplo}
+1️⃣ **Histórico de consumo real** (en número de tazas):
+{resumen_real}
 
-Con base en eso, responde esta pregunta en español: {mensaje}
+2️⃣ **Proyecciones de consumo futuro**:
+{resumen_pred}
+
+Con base en eso, responde en español, de forma clara, la siguiente pregunta del usuario:
+\"\"\"{mensaje}\"\"\"
 """
+
     if USE_TRANSFORMERS:
         salida = chatbot(prompt, max_length=512, do_sample=False)[0]["generated_text"]
         return salida.strip()
@@ -39,12 +57,13 @@ Con base en eso, responde esta pregunta en español: {mensaje}
         respuesta = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Eres un analista que responde preguntas sobre consumo de café."},
+                {"role": "system", "content": "Eres un analista de datos de café."},
                 {"role": "user", "content": prompt}
             ]
         )
         return respuesta.choices[0].message.content.strip()
 
+# Carga de datos reales
 @st.cache_data
 def cargar_datos():
     df = pd.read_parquet("coffee_db.parquet")
@@ -57,7 +76,7 @@ def cargar_datos():
     df_long['Coffee type'] = df_long['Coffee type'].str.strip()
     df_long = df_long.dropna(subset=['Consumption'])
     return df_long
-
+    
 def entrenar_modelo(df, columna_fecha='Year', columna_valor='Consumption', horizonte=15):
     df_model = df.rename(columns={columna_valor: 'y'})
     df_model['ds'] = pd.to_datetime(df_model[columna_fecha], format='%Y')
@@ -199,11 +218,31 @@ if st.button("🔮 Predecir consumo"):
         st.markdown(href, unsafe_allow_html=True)
 
 # CHATBOT
-st.subheader("💬 Asistente conversacional sobre las proyecciones")
-mensaje = st.chat_input("¿Qué deseas saber sobre las proyecciones?")
+st.subheader("💬 Asistente conversacional sobre café")
+st.markdown("Selecciona una pregunta sugerida o escribe la tuya:")
+
+# Lista de preguntas sugeridas
+sugerencias = [
+    "¿Qué país consume menos café?",
+    "¿Cuál es el tipo de café más consumido en Colombia?",
+    "¿Cuántas tazas se consumieron en el año 2010?",
+    "¿Qué tipo de café crecerá más hasta 2035?",
+    "¿El consumo global está aumentando o disminuyendo?",
+    "¿En qué año se espera el mayor consumo?",
+    "¿Cuál es el país con mayor proyección en 2030?"
+]
+
+# Mostrar como botones
+cols = st.columns(2)
+for i, pregunta in enumerate(sugerencias):
+    if cols[i % 2].button(f"💬 {pregunta}"):
+        st.session_state["chat_sugerencia"] = pregunta
+
+
+mensaje = st.chat_input("Haz una pregunta sobre los datos o predicciones...")
+
 if mensaje:
     with st.spinner("Analizando..."):
-        df_pred = top_forecast_df  # Usa predicciones recientes
-        respuesta = responder_chat(mensaje, df_pred)
+        respuesta = responder_chat(mensaje, df_pred=forecast_global, df_real=df_long)
     st.chat_message("user").write(mensaje)
     st.chat_message("assistant").write(respuesta)
